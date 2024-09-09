@@ -1,6 +1,8 @@
 package com.example.bluetoothadapter
 
 import android.Manifest
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -21,13 +23,27 @@ class MainActivity : ComponentActivity() {
 
     private val bluetoothManager = BluetoothManager(this)
     private val permissionHandler = PermissionHandler(this)
-
+    private val permissionDenied = mutableStateOf(false)
+    private val bluetoothEnabled = mutableStateOf(false)
     private val permissions = arrayOf(
         Manifest.permission.BLUETOOTH,
         Manifest.permission.BLUETOOTH_ADMIN,
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
-    )
+    ).let{
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S){
+            it.plus(Manifest.permission.BLUETOOTH_SCAN).plus(Manifest.permission.BLUETOOTH_CONNECT)
+        } else it
+    }
+
+    private val enableBluetoothLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if(result.resultCode == RESULT_OK) {
+            bluetoothEnabled.value = true
+            bluetoothManager.startDiscovery()
+        } else {
+            showMessage("Bluetooth is required to discover devices.")
+        }
+    }
 
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -46,8 +62,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val permissionDenied = mutableStateOf(false)
-    private val bluetoothEnabled = mutableStateOf(false)
+    fun promptEnableBluetooth(){
+        val enableBtIntent = Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE)
+        enableBluetoothLauncher.launch(enableBtIntent)
+    }
 
     @Composable
     private fun BluetoothAdapter(permissionDenied: MutableState<Boolean>, bluetoothEnabled: MutableState<Boolean>) {
@@ -78,5 +96,10 @@ class MainActivity : ComponentActivity() {
         } else {
             bluetoothManager.initializeBluetooth(bluetoothEnabled)
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(bluetoothManager.receiver)
     }
 }

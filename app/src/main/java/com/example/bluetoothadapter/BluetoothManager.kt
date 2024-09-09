@@ -1,26 +1,32 @@
 package com.example.bluetoothadapter
 
-import android.Manifest
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.content.Intent
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
+import android.content.IntentFilter
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateListOf
 
 class BluetoothManager(private val activity: MainActivity) {
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    private val permissionHandler = PermissionHandler(activity)
+    val discoveredDevices = mutableStateListOf<BluetoothDevice>()
+
+    companion object {
+        const val REQUEST_ENABLE_BT =1
+    }
 
     fun initializeBluetooth(bluetoothEnabled: MutableState<Boolean>) {
-        if(hasRequiredPermissions()) {
+        if(permissionHandler.hasRequiredPermissions()) {
             try{
                 if(bluetoothAdapter == null){
                     activity.showMessage("This device doesn't support bluetooth")
                     return
                 }
 
-                if(!bluetoothAdapter!!.isEnabled){
+                if(!bluetoothAdapter.isEnabled){
                     val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                    activity.startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
+                    activity.promptEnableBluetooth()
                 } else {
                     bluetoothEnabled.value = true
                     startDiscovery()
@@ -34,39 +40,31 @@ class BluetoothManager(private val activity: MainActivity) {
     }
 
     fun startDiscovery() {
-        if(hasRequiredPermissions()) {
+        if(permissionHandler.hasRequiredPermissions()) {
+            val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
+            activity.registerReceiver(receiver, filter)
             try{
-                if(bluetoothAdapter?.isEnabled == true){
-                    if(bluetoothAdapter.isDiscovering){
-                        bluetoothAdapter.cancelDiscovery()
-                    }
-
-                    bluetoothAdapter.startDiscovery()
-                    activity.showMessage("Started bluetooth discovery...")
+                if (bluetoothAdapter?.isDiscovering == true) {
+                    bluetoothAdapter.cancelDiscovery()
                 }
-            } catch(e: SecurityException) {
+
+                bluetoothAdapter?.startDiscovery()
+                activity.showMessage("Started bluetooth discovery...")
+            }catch (e: SecurityException){
                 activity.showMessage("Bluetooth discovery failed: Permission not granted")
             }
-        } else{
+        } else {
             activity.showMessage("Required permissions for bluetooth are not granted")
         }
     }
 
-    private fun hasRequiredPermissions(): Boolean {
-        val hasBluetoothPermission = ContextCompat.checkSelfPermission(
-            activity, Manifest.permission.BLUETOOTH
-        ) == PackageManager.PERMISSION_GRANTED
-        val hasBluetoothAdminPermission = ContextCompat.checkSelfPermission(
-            activity, Manifest.permission.BLUETOOTH_ADMIN
-        ) == PackageManager.PERMISSION_GRANTED
-        val hasLocationPermission = ContextCompat.checkSelfPermission(
-            activity, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        return hasBluetoothPermission && hasBluetoothAdminPermission && hasLocationPermission
-    }
-
-    companion object {
-        private const val REQUEST_ENABLE_BT =1
+    val receiver = object  : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+            val action: String? = intent.action
+            if(BluetoothDevice.ACTION_FOUND == action){
+                val device: BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                device?.let { discoveredDevices.add(it) }
+            }
+        }
     }
 }

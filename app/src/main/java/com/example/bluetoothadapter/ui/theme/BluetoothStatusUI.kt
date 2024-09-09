@@ -9,7 +9,7 @@ import androidx.compose.runtime.MutableState
 fun BluetoothStatusUI(bluetoothEnabled: MutableState<Boolean>){
     Column{
         if(!bluetoothEnabled.value){
-            Text("Enable bluetooth to discovery nearby devices.")
+            Text("Enable bluetooth to discover nearby devices.")
         } else {
             Text("Bluetooth is enabled. Discovering devices...")
         }
