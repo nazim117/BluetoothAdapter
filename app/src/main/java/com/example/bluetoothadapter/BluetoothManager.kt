@@ -4,8 +4,14 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.Intent
 import android.content.IntentFilter
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.Modifier
 
 class BluetoothManager(private val activity: MainActivity) {
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
@@ -15,7 +21,7 @@ class BluetoothManager(private val activity: MainActivity) {
     companion object {
         const val REQUEST_ENABLE_BT =1
     }
-
+    
     fun initializeBluetooth(bluetoothEnabled: MutableState<Boolean>) {
         if(permissionHandler.hasRequiredPermissions()) {
             try{

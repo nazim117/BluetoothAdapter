@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.util.JsonToken
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,6 +20,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import com.example.bluetoothadapter.ui.theme.BluetoothStatusUI
 import com.example.bluetoothadapter.ui.theme.PermissionDeniedDialog
+
+import com.spotify.android.appremote.api.ConnectionParams;
+import com.spotify.android.appremote.api.Connector;
+import com.spotify.android.appremote.api.SpotifyAppRemote;
+import com.spotify.protocol.client.Subscription;
+import com.spotify.protocol.types.PlayerState;
+import com.spotify.protocol.types.Track;
+import com.spotify.sdk.android.auth.AuthorizationClient
+import com.spotify.sdk.android.auth.AuthorizationRequest
+import com.spotify.sdk.android.auth.AuthorizationResponse
 
 class MainActivity : ComponentActivity() {
 
@@ -53,6 +65,7 @@ class MainActivity : ComponentActivity() {
 
         if(granted){
             bluetoothManager.initializeBluetooth(bluetoothEnabled)
+            //authorizeSpotify()
         }
     }
 
@@ -95,6 +108,7 @@ class MainActivity : ComponentActivity() {
             requestPermissions.launch(permissions)
         } else {
             bluetoothManager.initializeBluetooth(bluetoothEnabled)
+            //authorizeSpotify()
         }
     }
 

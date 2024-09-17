@@ -16,9 +16,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        flatDir {
+            dirs("app/libs")
+        }
     }
 }
 
 rootProject.name = "BluetoothAdapter"
 include(":app")
- 
+include(":app-remote-lib")

@@ -47,10 +47,19 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    buildToolsVersion = "35.0.0"
 }
 
 dependencies {
 
+    implementation("com.spotify.android:auth:1.2.5") // Maven dependency
+
+    // All other dependencies for your app should also be here:
+    //implementation("androidx.appcompat:appcompat:$appCompatVersion")
+    implementation("androidx.browser:browser:1.0.0")
+    implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
+    // Other dependencies
+    implementation("com.google.code.gson:gson:2.10.1")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
