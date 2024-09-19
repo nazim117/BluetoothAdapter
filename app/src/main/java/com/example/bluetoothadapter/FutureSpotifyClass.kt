@@ -1,5 +1,16 @@
 package com.example.bluetoothadapter
 
+import com.spotify.android.appremote.api.ConnectionParams;
+import com.spotify.android.appremote.api.Connector;
+import com.spotify.android.appremote.api.SpotifyAppRemote;
+import com.spotify.protocol.client.Subscription;
+import com.spotify.protocol.types.PlayerState;
+import com.spotify.protocol.types.Track;
+import com.spotify.sdk.android.auth.AuthorizationClient
+import com.spotify.sdk.android.auth.AuthorizationRequest
+import com.spotify.sdk.android.auth.AuthorizationResponse
+
+//TODO: THIS CLASS CONTAINS METHODS THAT WILL BE IMPLEMENTED LATER
 class FutureSpotifyClass {
     //    private val authLauncher = registerForActivityResult(
 //        ActivityResultContracts.StartActivityForResult()
