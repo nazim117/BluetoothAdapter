@@ -1,148 +1,25 @@
 package com.example.bluetoothadapter
 
-import android.Manifest
 import android.app.Activity
-import android.bluetooth.BluetoothA2dp
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothProfile
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.media.MediaPlayer
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.widget.ArrayAdapter
 import android.widget.ListView
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import java.util.IllegalFormatException
 
 class MainActivity : ComponentActivity() {
-    private val REQUEST_CODE_PERMISSION = 1
-    private val REQUEST_ENABLE_BT = 2
-
-
-    private var currentlyConnectedDevice: BluetoothDevice? = null
-    private var isPlaying = false
-    private var isPendingConnection = false
-
-    private var bluetoothA2dp: BluetoothA2dp? = null
-    private lateinit var bluetoothAdapter: BluetoothAdapter
-    private val discoveredDevices = mutableListOf<BluetoothDevice>()
-    private lateinit var devicesAdapter: ArrayAdapter<String>
+    lateinit var bluetoothManager: BluetoothManager
+    private lateinit var audioFileManager: AudioFileManager
+    private lateinit var permissionManager: PermissionManager
+    private lateinit var deviceListAdapter: DeviceListAdapter
     private lateinit var devicesListView: ListView
-    private lateinit var mediaPlayer: MediaPlayer
-    private val handler = Handler(Looper.getMainLooper())
 
-    private val receiver = object : BroadcastReceiver(){
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val action: String? = intent?.action
-            Log.d(TAG, "Broadcast received: $action")
-
-            when(action){
-                BluetoothDevice.ACTION_FOUND -> {
-                    val device: BluetoothDevice? =
-                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-
-                    device?.let{
-                        val deviceClass = it.bluetoothClass.deviceClass
-                        Log.d(TAG, "Device class: $deviceClass")
-
-                        if(deviceClass == BluetoothClass.Device.AUDIO_VIDEO_HEADPHONES ||
-                            deviceClass == BluetoothClass.Device.AUDIO_VIDEO_LOUDSPEAKER ||
-                            deviceClass == BluetoothClass.Device.AUDIO_VIDEO_WEARABLE_HEADSET){
-
-                            Log.d(TAG, "Device found: ${it.name} - ${it.address}")
-                            val permission = Manifest.permission.BLUETOOTH_CONNECT
-                            val hasPermissions =
-                                context?.let { ctx ->
-                                    ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
-                                } ?: false
-                            if(hasPermissions) {
-                                Log.d(TAG, "Device found ${it.name} - ${it.address}")
-                                val deviceName = it.name ?: "Unknown device"
-                                val deviceHardwareAddress = it.address
-                                val deviceInfo = "$deviceName \n$deviceHardwareAddress"
-
-                                if(!discoveredDevices.contains(it)){
-                                    discoveredDevices.add(it)
-                                    devicesAdapter.add(deviceInfo)
-                                    devicesAdapter.notifyDataSetChanged()
-                                } else {
-                                    Log.d(TAG, "Device is null")
-                                }
-                            } else{
-                                Toast.makeText(context, "Enable bluetooth permissions in settings to use application", Toast.LENGTH_SHORT).show()
-                            }
-                        } else{
-                            Log.d(TAG, "Device is not audio")
-                        }
-                    }
-                } BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
-                    Log.d(TAG, "Bluetooth discovery finished")
-                    Toast.makeText(context, "Discovery finished", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    private val bondStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val action = intent?.action
-            if (action == BluetoothDevice.ACTION_BOND_STATE_CHANGED) {
-                val device: BluetoothDevice? = intent.getParcelableExtra(
-                    BluetoothDevice.EXTRA_DEVICE
-                )
-                val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
-                val previousBondState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.ERROR)
-
-                Log.d(TAG, "Bond state changed for ${device?.name}: $previousBondState -> $bondState")
-
-                when (bondState) {
-                    BluetoothDevice.BOND_BONDED -> {
-                        Log.d(TAG, "${device?.name} is bonded")
-                        if (isPendingConnection) {
-                            device?.let { connectToA2DPProfile(it) }
-                        }
-                    }
-                    BluetoothDevice.BOND_NONE -> {
-                        Log.d(TAG, "${device?.name} is unbonded")
-                        if (device == currentlyConnectedDevice) {
-                            currentlyConnectedDevice = null
-                            stopAudioPlayback()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun requestBluetoothPermissions() {
-        Log.d(TAG, "requestBluetoothPermissions called")
-        // Android 12 and above
-        val bluetoothPermissions = arrayOf(
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        )
-        if (bluetoothPermissions.all {
-                ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
-            }) {
-            Log.d(TAG, "All Bluetooth permissions granted for Android 12+")
-            initializeBluetooth()
-        } else {
-            Log.d(TAG, "Requesting Bluetooth permissions for Android 12+")
-            ActivityCompat.requestPermissions(this, bluetoothPermissions, REQUEST_CODE_PERMISSION)
-        }
-    }
+    private val TAG = "MainActivity"
+    private val REQUEST_ENABLE_BT = 2
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -150,274 +27,50 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_CODE_PERMISSION) {
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                Log.d(TAG, "All permissions granted.")
-                initializeBluetooth()
-            } else {
-                Log.e(TAG, "Permissions denied.")
-                Toast.makeText(this, "Bluetooth permissions are required.", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private val bluetoothProfileListener = object : BluetoothProfile.ServiceListener {
-        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-            if (profile == BluetoothProfile.A2DP) {
-                bluetoothA2dp = proxy as BluetoothA2dp
-                Log.d(TAG, "A2DP profile connected")
-                startBluetoothScanning()
-            }
-        }
-
-        override fun onServiceDisconnected(profile: Int) {
-            if (profile == BluetoothProfile.A2DP) {
-                bluetoothA2dp = null
-                Log.d(TAG, "A2DP profile disconnected")
-            }
-        }
-    }
-
-    private fun initializeBluetooth() {
-        if(ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED){
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.BLUETOOTH_CONNECT), REQUEST_CODE_PERMISSION)
-            return
-        }
-
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
-        if(bluetoothAdapter == null){
-            Toast.makeText(this, "Bluetooth not supported", Toast.LENGTH_SHORT).show()
-            return
-        }
-        Log.d(TAG, "Bluetooth initialized")
-
-        if(!bluetoothAdapter.isEnabled){
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
-        } else{
-            bluetoothAdapter.getProfileProxy(this, bluetoothProfileListener, BluetoothProfile.A2DP)
-        }
+        permissionManager.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if(requestCode == REQUEST_ENABLE_BT) {
             if(resultCode == Activity.RESULT_OK){
-                bluetoothAdapter.getProfileProxy(this, bluetoothProfileListener, BluetoothProfile.A2DP)
+                bluetoothManager.initializeA2DPProxy()
             } else {
                 Toast.makeText(this, "Bluetooth needed", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun startBluetoothScanning() {
-        Log.d(TAG, "Starting Bluetooth scanning...")
-        if(ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED){
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.BLUETOOTH_SCAN), REQUEST_CODE_PERMISSION)
-            return
-        }
-
-        val filter = IntentFilter().apply {
-            addAction(BluetoothDevice.ACTION_FOUND)
-            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
-        }
-        registerReceiver(receiver, filter)
-
-        discoveredDevices.clear()
-        devicesAdapter.clear()
-
-        if(bluetoothAdapter.isDiscovering){
-            bluetoothAdapter.cancelDiscovery()
-        }
-
-        val started = bluetoothAdapter.startDiscovery()
-        if(started){
-            Toast.makeText(this, "Scanning for devices...", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Bluetooth scanning started")
-        } else{
-            Toast.makeText(this, "Failed to start discovery.", Toast.LENGTH_SHORT).show()
-            Log.e(TAG, "Bluetooth scanning failed to start")
-        }
-    }
-
-    private val TAG = "MainActivity"
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
 
-        devicesListView = findViewById(R.id.devices_list_view)
-        Log.d(TAG, "devicesListView initialized successfully")
-        devicesAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1)
-        devicesListView.adapter = devicesAdapter
-        devicesAdapter.add("Dummy Device\n00:11:22:33:44:55")
-        devicesAdapter.notifyDataSetChanged()
+        permissionManager = PermissionManager(this)
+        deviceListAdapter = DeviceListAdapter(this)
+        bluetoothManager = BluetoothManager(this, deviceListAdapter)
+        audioFileManager = AudioFileManager(this)
 
-        devicesListView.setOnItemClickListener {parent, view, position, id ->
-            val selectedDevice = discoveredDevices[position]
+        devicesListView = findViewById(R.id.devices_list_view)
+        devicesListView.adapter = deviceListAdapter
+
+        devicesListView.setOnItemClickListener{_, _, position, _ ->
+            val selectedDevice = deviceListAdapter.getItem(position) as BluetoothDevice
             connectToAudioDevice(selectedDevice)
         }
 
-        val bondIntentFilter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
-        registerReceiver(bondStateReceiver, bondIntentFilter)
-
-        requestBluetoothPermissions()
+        permissionManager.requestBluetoothPermissions()
     }
-
-    private fun playAudio() {
-        if(mediaPlayer.isPlaying){
-            mediaPlayer.stop()
-            mediaPlayer.prepare()
-        }
-        mediaPlayer.start()
-        Log.d(TAG, "Audio playback started")
-    }
-
 
     private fun connectToAudioDevice(device: BluetoothDevice) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.BLUETOOTH_CONNECT), REQUEST_CODE_PERMISSION)
-            return
-        }
-
-        if (bluetoothAdapter.isDiscovering) {
-            bluetoothAdapter.cancelDiscovery()
-        }
-
-        if (device == currentlyConnectedDevice) {
-            unpairAndStopPlayback(device)
-        } else {
-            when (device.bondState) {
-                BluetoothDevice.BOND_NONE -> {
-                    isPendingConnection = true
-                    device.createBond()
-                }
-                BluetoothDevice.BOND_BONDED -> {
-                    connectToA2DPProfile(device)
-                }
-                else -> {
-                    Log.d(TAG, "Device is in bonding process, waiting...")
-                    isPendingConnection = true
-                }
-            }
-        }
-    }
-
-    private fun connectToA2DPProfile(device: BluetoothDevice) {
-        bluetoothA2dp?.let { a2dpProfile ->
-            try {
-                val connectMethod = BluetoothA2dp::class.java.getMethod("connect", BluetoothDevice::class.java)
-                connectMethod.invoke(a2dpProfile, device)
-                Log.d(TAG, "Connecting to ${device.name} via A2DP")
-
-                // Wait for the connection to be established
-                handler.postDelayed({
-                    if (isA2DPConnected(device)) {
-                        currentlyConnectedDevice = device
-                        if (!isPlaying) {
-                            startAudioPlayback()
-                        }
-                        runOnUiThread {
-                            Toast.makeText(this, "Connected to ${device.name}", Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        Log.e(TAG, "Failed to connect to ${device.name} via A2DP")
-                        runOnUiThread {
-                            Toast.makeText(this, "Failed to connect to ${device.name}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    isPendingConnection = false
-                }, 2000) // Wait for 2 seconds before checking the connection
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-                runOnUiThread {
-                    Toast.makeText(this, "Failed to connect to ${device.name}", Toast.LENGTH_SHORT).show()
-                }
-                isPendingConnection = false
-            }
-        } ?: run {
-            Log.e(TAG, "A2DP profile not connected")
-            Toast.makeText(this, "A2DP profile not connected", Toast.LENGTH_SHORT).show()
-            isPendingConnection = false
-        }
-    }
-
-    private fun isA2DPConnected(device: BluetoothDevice): Boolean {
-        return bluetoothA2dp?.getConnectionState(device) == BluetoothProfile.STATE_CONNECTED
-    }
-
-    private fun startAudioPlayback() {
-        if(!::mediaPlayer.isInitialized){
-            mediaPlayer = MediaPlayer.create(this, R.raw.audio_file)
-        }
-
-        handler.postDelayed(object: Runnable{
-            override fun run(){
-                playAudio()
-                handler.postDelayed(this, 30000)
-            }
-        }, 0)
-
-        isPlaying = true
-    }
-
-    private fun stopAudioPlayback() {
-        handler.removeCallbacksAndMessages(null)
-        if(::mediaPlayer.isInitialized && mediaPlayer.isPlaying){
-            mediaPlayer.stop()
-            mediaPlayer.prepare()
-        }
-        isPlaying = false
-    }
-
-    private fun unpairAndStopPlayback(device: BluetoothDevice) {
-        if(ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.BLUETOOTH_CONNECT), REQUEST_CODE_PERMISSION)
-            return
-        }
-
-        try{
-            stopAudioPlayback()
-
-            val removeBondMethod = device.javaClass.getMethod("removeBond")
-            removeBondMethod.invoke(device)
-
-            currentlyConnectedDevice = null
-
-            runOnUiThread {
-                Toast.makeText(this, "Unpaired from ${device.name}", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception){
-            e.printStackTrace()
-            runOnUiThread{
-                Toast.makeText(this, "Failed to unpair from ${device.name}", Toast.LENGTH_SHORT).show()
-            }
+        if(permissionManager.checkBluetoothConnectPermission()){
+            bluetoothManager.connectToAudioDevice(device)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-
-        try{
-            handler.removeCallbacksAndMessages(null)
-            if(::mediaPlayer.isInitialized && mediaPlayer.isPlaying){
-                mediaPlayer.stop()
-                mediaPlayer.release()
-            }
-
-            unregisterReceiver(receiver)
-        } catch (e: IllegalFormatException){
-            Toast.makeText(this, "Receiver not registered", Toast.LENGTH_SHORT).show()
-        }
-
-        if(ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
-            if (bluetoothAdapter.isDiscovering) {
-                bluetoothAdapter.cancelDiscovery()
-            }
-        } else {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.BLUETOOTH_SCAN), REQUEST_CODE_PERMISSION)
-        }
+        bluetoothManager.onDestroy()
+        audioFileManager.onDestroy()
     }
 }
