@@ -11,7 +11,6 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothProfile
-import android.bluetooth.BluetoothSocket
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
@@ -24,22 +23,16 @@ import android.widget.ArrayAdapter
 import android.widget.ListView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import java.io.IOException
-import java.io.OutputStream
 import java.util.IllegalFormatException
 
 class MainActivity : ComponentActivity() {
-    private val permissions = arrayOf(
-        Manifest.permission.BLUETOOTH,
-        Manifest.permission.BLUETOOTH_ADMIN,
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION,
-        Manifest.permission.BLUETOOTH_SCAN,
-        Manifest.permission.BLUETOOTH_CONNECT
-    )
-
     private val REQUEST_CODE_PERMISSION = 1
     private val REQUEST_ENABLE_BT = 2
+
+
+    private var currentlyConnectedDevice: BluetoothDevice? = null
+    private var isPlaying = false
+    private var isPendingConnection = false
 
     private var bluetoothA2dp: BluetoothA2dp? = null
     private lateinit var bluetoothAdapter: BluetoothAdapter
@@ -101,21 +94,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val bondStateReceiver = object: BroadcastReceiver(){
+    private val bondStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action
-            if(action == BluetoothDevice.ACTION_BOND_STATE_CHANGED) {
+            if (action == BluetoothDevice.ACTION_BOND_STATE_CHANGED) {
                 val device: BluetoothDevice? = intent.getParcelableExtra(
                     BluetoothDevice.EXTRA_DEVICE
                 )
                 val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
                 val previousBondState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.ERROR)
 
-                Log.d(TAG, "Bond state changed for ${device?.name}: $previousBondState")
+                Log.d(TAG, "Bond state changed for ${device?.name}: $previousBondState -> $bondState")
 
-                if(bondState == BluetoothDevice.BOND_BONDED){
-                    Log.d(TAG, "${device?.name} is bonded")
-                    device?.let {connectToAudioDevice(it)}
+                when (bondState) {
+                    BluetoothDevice.BOND_BONDED -> {
+                        Log.d(TAG, "${device?.name} is bonded")
+                        if (isPendingConnection) {
+                            device?.let { connectToA2DPProfile(it) }
+                        }
+                    }
+                    BluetoothDevice.BOND_NONE -> {
+                        Log.d(TAG, "${device?.name} is unbonded")
+                        if (device == currentlyConnectedDevice) {
+                            currentlyConnectedDevice = null
+                            stopAudioPlayback()
+                        }
+                    }
                 }
             }
         }
@@ -281,39 +285,115 @@ class MainActivity : ComponentActivity() {
             bluetoothAdapter.cancelDiscovery()
         }
 
-        bluetoothA2dp?.let { a2dpProfile ->
-            // Check if the device is already bonded
-
-            if (device.bondState != BluetoothDevice.BOND_BONDED) {
-                device.createBond()
+        if (device == currentlyConnectedDevice) {
+            unpairAndStopPlayback(device)
+        } else {
+            when (device.bondState) {
+                BluetoothDevice.BOND_NONE -> {
+                    isPendingConnection = true
+                    device.createBond()
+                }
+                BluetoothDevice.BOND_BONDED -> {
+                    connectToA2DPProfile(device)
+                }
+                else -> {
+                    Log.d(TAG, "Device is in bonding process, waiting...")
+                    isPendingConnection = true
+                }
             }
+        }
+    }
 
-            // Use reflection to invoke the hidden connect method
+    private fun connectToA2DPProfile(device: BluetoothDevice) {
+        bluetoothA2dp?.let { a2dpProfile ->
             try {
                 val connectMethod = BluetoothA2dp::class.java.getMethod("connect", BluetoothDevice::class.java)
                 connectMethod.invoke(a2dpProfile, device)
-                Log.d(TAG, "Connected to ${device.name}")
+                Log.d(TAG, "Connecting to ${device.name} via A2DP")
 
-                mediaPlayer = MediaPlayer.create(this, R.raw.audio_file)
-
-                handler.postDelayed(object: Runnable{
-                    override fun run(){
-                        playAudio()
-                        handler.postDelayed(this, 30000)
+                // Wait for the connection to be established
+                handler.postDelayed({
+                    if (isA2DPConnected(device)) {
+                        currentlyConnectedDevice = device
+                        if (!isPlaying) {
+                            startAudioPlayback()
+                        }
+                        runOnUiThread {
+                            Toast.makeText(this, "Connected to ${device.name}", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to connect to ${device.name} via A2DP")
+                        runOnUiThread {
+                            Toast.makeText(this, "Failed to connect to ${device.name}", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                }, 0)
-                runOnUiThread {
-                    Toast.makeText(this, "Connected to ${device.name}", Toast.LENGTH_SHORT).show()
-                }
+                    isPendingConnection = false
+                }, 2000) // Wait for 2 seconds before checking the connection
+
             } catch (e: Exception) {
                 e.printStackTrace()
                 runOnUiThread {
                     Toast.makeText(this, "Failed to connect to ${device.name}", Toast.LENGTH_SHORT).show()
                 }
+                isPendingConnection = false
             }
         } ?: run {
             Log.e(TAG, "A2DP profile not connected")
             Toast.makeText(this, "A2DP profile not connected", Toast.LENGTH_SHORT).show()
+            isPendingConnection = false
+        }
+    }
+
+    private fun isA2DPConnected(device: BluetoothDevice): Boolean {
+        return bluetoothA2dp?.getConnectionState(device) == BluetoothProfile.STATE_CONNECTED
+    }
+
+    private fun startAudioPlayback() {
+        if(!::mediaPlayer.isInitialized){
+            mediaPlayer = MediaPlayer.create(this, R.raw.audio_file)
+        }
+
+        handler.postDelayed(object: Runnable{
+            override fun run(){
+                playAudio()
+                handler.postDelayed(this, 30000)
+            }
+        }, 0)
+
+        isPlaying = true
+    }
+
+    private fun stopAudioPlayback() {
+        handler.removeCallbacksAndMessages(null)
+        if(::mediaPlayer.isInitialized && mediaPlayer.isPlaying){
+            mediaPlayer.stop()
+            mediaPlayer.prepare()
+        }
+        isPlaying = false
+    }
+
+    private fun unpairAndStopPlayback(device: BluetoothDevice) {
+        if(ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.BLUETOOTH_CONNECT), REQUEST_CODE_PERMISSION)
+            return
+        }
+
+        try{
+            stopAudioPlayback()
+
+            val removeBondMethod = device.javaClass.getMethod("removeBond")
+            removeBondMethod.invoke(device)
+
+            currentlyConnectedDevice = null
+
+            runOnUiThread {
+                Toast.makeText(this, "Unpaired from ${device.name}", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception){
+            e.printStackTrace()
+            runOnUiThread{
+                Toast.makeText(this, "Failed to unpair from ${device.name}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
