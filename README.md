@@ -1,7 +1,7 @@
 # BluetoothAdapter
 
 
-## Project Overview:
+## Project Overview
 The idea of the project is to mimic the Bluetooth feature in a phone. 
 It is able to connect to an audio device through Bluetooth and automatically play an audio file after connecting.
 Moreover, you are also able to disconnect from that device and the audio file will stop immediately.
@@ -43,7 +43,7 @@ Handles playing and stopping audio.
 ### DeviceListAdapter
 Serves the purpose of displaying the found devices to the user. It is mostly a class responsible for UI/UX.
 
-## Setup instructions:
+## Setup instructions
 
 ### Step 1: Clone the Project
 Clone the project using Git.
@@ -57,9 +57,9 @@ Once cloned, you can open the project in Android Studio:
 2. Select **File > Open**.
 3. Navigate to the folder where the project was cloned and select it.
 
-### Step 3: Install Dependencies:
+### Step 3: Install Dependencies
 Go to **build.gradle.kts** and click **Sync Now** that is at the top of the screen
 
-### Step 4: Running the project:
+### Step 4: Running the project
 1. Connect your Android device via USB
 2. Click the **Run** button in Android Studio or press **Shift + F10** to build and run the app.
