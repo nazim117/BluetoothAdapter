@@ -2,13 +2,13 @@
 
 
 ## Project Overview:
-- The idea of the project is to mimic the Bluetooth feature in a phone. 
+The idea of the project is to mimic the Bluetooth feature in a phone. 
 It is able to connect to an audio device through Bluetooth and automatically play an audio file after connecting.
 Moreover, you are also able to disconnect from that device and the audio file will stop immediately.
 
-- The applications target audience is people who want to test if their phone is capable of pairing with another audio device.
+The applications target audience is people who want to test if their phone is capable of pairing with another audio device.
 
-## Tech Stack:
+## Tech Stack
 
 ### Front-end - Jetpack Compose 
 The decision was behind the fact that Google (the company behind the creation of the technology)
@@ -23,10 +23,10 @@ wants developers to use it for development instead of XML.
 - Has a bigger developer community.
 - Android performs better than Flutter because it is optimized for the OS.
 
-## Key features:
+## Key features
 You as a user are able to connect and disconnect to and from other audio devices through Bluetooth. 
 
-## Project structure:
+## Project structure
 
 ### MainActivity class
 It serves as the controller receiving requests from the UI and sending the appropriate response back.
